@@ -22,7 +22,10 @@ export class InputManager {
         this._handleKeyDown = this._handleKeyDown.bind(this);
         this._handleKeyUp = this._handleKeyUp.bind(this);
 
-        this._isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+        this._isMobile = !!(window.matchMedia && (
+            window.matchMedia('(max-width: 768px)').matches ||
+            window.matchMedia('(pointer: coarse)').matches
+        ));
         this._bound = false;
     }
 

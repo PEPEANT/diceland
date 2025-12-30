@@ -197,7 +197,7 @@ body.mobile-controls-hidden .mobile-action {
 }
 
 /* Mobile responsive */
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) {
     #joystick-zone {
         display: block;
         left: calc(18px + env(safe-area-inset-left));
