@@ -89,11 +89,8 @@ class GameApp {
 const game = new GameApp();
 game.start();
 
-// ✅ 로컬(개발) / 배포(GitHub Pages) 자동 분기
-const CONNECT_URL =
-  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-    ? 'ws://localhost:8080'
-    : 'wss://diceland.onrender.com';
+// ✅ PC/모바일/시크릿창 모두 같은 서버로 붙게: Render 고정 (로컬도 일단 이걸로 테스트)
+const CONNECT_URL = 'wss://diceland.onrender.com';
 
 initMenuSystem({
     sceneManager: game.sceneManager,
