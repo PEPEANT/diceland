@@ -89,12 +89,19 @@ class GameApp {
 const game = new GameApp();
 game.start();
 
+// ✅ 로컬(개발) / 배포(GitHub Pages) 자동 분기
+const CONNECT_URL =
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'ws://localhost:8080'
+    : 'wss://diceland.onrender.com';
+
 initMenuSystem({
     sceneManager: game.sceneManager,
     app: App,
     onlineClient: game.onlineClient,
-    connectUrl: 'ws://localhost:8080',
+    connectUrl: CONNECT_URL,
 });
+
 initPlayerListOverlay({ app: App, onlineClient: game.onlineClient });
 
 const btnCtl = document.getElementById('controls-toggle');
