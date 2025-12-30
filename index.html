@@ -98,10 +98,13 @@
 
   <!-- Ranking Layer -->
   <div id="ranking-layer">
-    <div class="ranking-box">
+    <div id="ranking-panel" class="ranking-box">
       <div class="ranking-title">
         <span>TOP 도박사</span>
-        <span style="font-size: 11px; opacity: 0.7;">실시간</span>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span style="font-size: 11px; opacity: 0.7;">실시간</span>
+          <button id="rank-toggle" type="button">닫기</button>
+        </div>
       </div>
       <ul id="ranking-list" class="ranking-list"></ul>
     </div>
@@ -394,6 +397,12 @@
 
   <!-- Chat -->
   <div id="chat-panel" class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-title">CHAT</div>
+      <div class="chat-actions">
+        <button id="chat-toggle" type="button">닫기</button>
+      </div>
+    </div>
     <div id="chat-log" class="chat-log"></div>
     <div class="chat-input-row">
       <input id="chat-input" class="chat-input" placeholder="T 또는 Enter로 채팅" />

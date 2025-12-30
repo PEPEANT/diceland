@@ -21,6 +21,7 @@ let nextId = 1;
 
 // ws -> player
 const clients = new Map();
+const HEARTBEAT_INTERVAL = 30000;
 
 function safeNickname(n) {
   const s = String(n || '').trim();
@@ -52,6 +53,7 @@ function roster() {
     room: p.room,
     x: p.x,
     y: p.y,
+    cash: p.cash || 0,
   }));
 }
 
@@ -62,10 +64,15 @@ wss.on('connection', (ws) => {
     room: 'lobby',
     x: 0,
     y: 0,
+    cash: 0,
     joinedAt: Date.now(),
   };
 
   clients.set(ws, player);
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   // tell self id + initial roster
   send(ws, { type: 'hello', playerId: player.id });
@@ -73,6 +80,7 @@ wss.on('connection', (ws) => {
 
   // tell others someone joined
   broadcast({ type: 'player_join', player }, ws);
+  broadcast({ type: 'sys', text: `${player.nickname}님이 입장하셨습니다.`, ts: Date.now() });
   presence();
 
   ws.on('message', (buf) => {
@@ -95,6 +103,7 @@ wss.on('connection', (ws) => {
       if (typeof data.x === 'number') player.x = data.x;
       if (typeof data.y === 'number') player.y = data.y;
       if (typeof data.room === 'string' && data.room.trim()) player.room = data.room.trim();
+      if (typeof data.cash === 'number') player.cash = data.cash;
 
       broadcast({
         type: 'state',
@@ -103,6 +112,7 @@ wss.on('connection', (ws) => {
         room: player.room,
         x: player.x,
         y: player.y,
+        cash: player.cash,
         ts: Date.now(),
       });
       return;
@@ -123,11 +133,19 @@ wss.on('connection', (ws) => {
       });
       return;
     }
+
+    if (data.type === 'sys') {
+      const text = String(data.text || '').trim();
+      if (!text) return;
+      broadcast({ type: 'sys', text: text.slice(0, 280), ts: Date.now() });
+      return;
+    }
   });
 
   ws.on('close', () => {
     clients.delete(ws);
     broadcast({ type: 'player_leave', playerId: player.id });
+    broadcast({ type: 'sys', text: `${player.nickname}님이 퇴장하셨습니다.`, ts: Date.now() });
     presence();
   });
 
@@ -139,3 +157,16 @@ wss.on('connection', (ws) => {
 server.listen(PORT, () => {
   console.log(`[DiceLand] WebSocket server listening on ws://localhost:${PORT}`);
 });
+
+setInterval(() => {
+  for (const ws of clients.keys()) {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch {}
+      clients.delete(ws);
+      continue;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }
+  presence();
+}, HEARTBEAT_INTERVAL);

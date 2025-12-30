@@ -79,6 +79,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             this.player.y = SPAWN_POSITION.y;
         }
         this.player.name = getNickname();
+        this._netRoom = 'lobby';
 
         if (spawnX !== undefined && spawnY !== undefined) {
             this.portalLock = 0.8;
@@ -138,6 +139,8 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
 
         this._resize();
         window.addEventListener('resize', this._resizeHandler);
+
+        this._sendImmediateState();
     }
 
     /**
@@ -341,7 +344,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             const near = Math.hypot(dx, dy) <= (CONFIG.INTERACTION_RANGE || 60);
             if (near) {
                 this.nearest = table;
-                this.ui.showPrompt('F : 러시안 룰렛');
+                this.ui.showPrompt('F 키로 상호작용');
                 return;
             }
         }
@@ -383,6 +386,13 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         // State sync is handled in GameApp to avoid duplicate sends.
     }
 
+    _sendImmediateState() {
+        const oc = window.__ONLINE__;
+        if (!oc?.isConnected?.()) return;
+        const cash = Number(this.app?.getState?.().cash) || 0;
+        oc.sendState({ room: this._netRoom, x: this.player.x, y: this.player.y, cash });
+    }
+
     _drawGunmanTable(ctx, obj) {
         drawGunmanTableProp(ctx, obj.x, obj.y, obj.scale ?? 1, obj.rotation ?? 0);
     }
@@ -399,7 +409,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             if (me && rp.id === me) continue;
 
             // 같은 방만 표시 (scene id 기준)
-            if (rp.room && rp.room !== 'lobby') continue;
+            if (rp.room && rp.room !== this._netRoom) continue;
 
             if (!Number.isFinite(rp.x) || !Number.isFinite(rp.y)) continue;
 
@@ -407,7 +417,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             const y = rp.y;
 
             ctx.save();
-            ctx.globalAlpha = 0.95;
+            ctx.globalAlpha = rp.stale ? 0.45 : 0.95;
             ctx.fillStyle = '#4af';
             ctx.beginPath();
             ctx.arc(x, y, 10, 0, Math.PI * 2);
@@ -418,8 +428,42 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
             ctx.fillText(name, x, y - 16);
+            if (rp.chatMessage && Date.now() < rp.chatUntil) {
+                this._drawRemoteBubble(ctx, x, y - 40, rp.chatMessage);
+            }
             ctx.restore();
         }
+    }
+
+    _drawRemoteBubble(ctx, x, y, text) {
+        ctx.save();
+        ctx.font = '14px sans-serif';
+        const metrics = ctx.measureText(text);
+        const w = metrics.width + 20;
+        const h = 30;
+        const r = 10;
+
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.roundRect(x - w / 2, y - h, w, h, r);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y);
+        ctx.lineTo(x, y + 6);
+        ctx.lineTo(x + 5, y);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y - h / 2);
+        ctx.restore();
     }
 
     /**

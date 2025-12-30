@@ -25,7 +25,7 @@ export class RussianRouletteUI {
         if (this.isOpen && !this.modal.classList.contains('hidden')) return;
         this.isOpen = true;
 
-        this.iframe.src = './Russianroulette/russianroulette.html';
+        this.iframe.src = './Russianroulette/_legacy_html/russianroulette.html';
         this.modal.classList.remove('hidden');
         this.modal.setAttribute('aria-hidden', 'false');
     }

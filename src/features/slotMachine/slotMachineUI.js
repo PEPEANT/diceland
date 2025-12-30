@@ -4,6 +4,7 @@
 import { SYMBOLS, generateSpinResult, calculateWin, DEFAULT_BET } from './slotMachineLogic.js';
 import { SlotMachineAPI } from './slotMachineAPI.js';
 import { clamp } from '../../core/constants.js';
+import { getNickname } from '../../core/profile.js';
 
 /**
  * 슬롯 머신 UI
@@ -240,7 +241,7 @@ export class SlotMachineUI {
 
         this.refreshCredit();
         this.state = 'RELEASING_SPIN';
-        this.setMessage('행운을 빕니다! 🎲');
+        this.setMessage('행운을 빕니다!');
         this.setWin(0);
 
         this._startSpin();
@@ -289,6 +290,12 @@ export class SlotMachineUI {
 
         this.setMessage(message);
         this.refreshCredit();
+
+        if (message.includes('잭팟')) {
+            const oc = window.__ONLINE__;
+            const multi = this.bet > 0 ? Math.floor(winChips / this.bet) : 0;
+            oc?.sendSys?.(`${getNickname()}님이 슬롯머신 잭팟 x${multi}배 당첨!`);
+        }
     }
 
     /**
@@ -473,3 +480,5 @@ export class SlotMachineUI {
         }
     }
 }
+
+

@@ -1,4 +1,4 @@
-// main.js - single entry (index.html)
+﻿// main.js - single entry (index.html)
 
 import { App } from './core/appState.js';
 import { SceneManager } from './core/sceneManager.js';
@@ -28,7 +28,7 @@ class GameApp {
         initServerPresence({ onlineClient: this.onlineClient });
 
         this.ranking = new RankingSystem();
-        this.ranking.init();
+        this.ranking.init({ onlineClient: this.onlineClient });
 
         this.input = new InputManager();
         this.input.bind();
@@ -50,7 +50,9 @@ class GameApp {
         this.lastTime = 0;
         this.running = true;
 
-        // ✅ 멀티플레이용 상태 전송 (너무 잦지 않게 5Hz)
+        this._bindCanvasResize();
+
+        // ??硫?고뵆?덉씠???곹깭 ?꾩넚 (?덈Т ??? ?딄쾶 5Hz)
         this._stateSendAcc = 0;
         this._stateSendInterval = 0.2;
     }
@@ -72,6 +74,15 @@ class GameApp {
         requestAnimationFrame((time) => this._loop(time));
     }
 
+    _bindCanvasResize() {
+        const resize = () => {
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+        };
+        resize();
+        window.addEventListener('resize', resize);
+    }
+
     _loop(time) {
         if (!this.running) return;
 
@@ -81,7 +92,7 @@ class GameApp {
         this.sceneManager.update(dt);
         this.sceneManager.render(this.ctx);
 
-        // ✅ 멀티플레이: 내 위치/돈 상태를 서버로 전송 (로비에서 서로 '보이게' 하려면 필요)
+        // ??硫?고뵆?덉씠: ???꾩튂/???곹깭瑜??쒕쾭濡??꾩넚 (濡쒕퉬?먯꽌 ?쒕줈 '蹂댁씠寃? ?섎젮硫??꾩슂)
         this._stateSendAcc += dt;
         if (this._stateSendAcc >= this._stateSendInterval) {
             this._stateSendAcc = 0;
@@ -110,9 +121,9 @@ class GameApp {
 const game = new GameApp();
 game.start();
 
-// ✅ 로컬(개발) / 배포(GitHub Pages) 자동 분기
-const CONNECT_URL =
-  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+// ??濡쒖뺄(媛쒕컻) / 諛고룷(GitHub Pages) ?먮룞 遺꾧린
+const useLocalWs = localStorage.getItem('DICELAND_LOCAL_WS') === '1';
+const CONNECT_URL = useLocalWs
     ? 'ws://localhost:8080'
     : 'wss://diceland.onrender.com';
 
@@ -134,3 +145,4 @@ btnCtl?.addEventListener('click', () => {
 window.__GAME__ = game;
 window.__APP__ = App;
 window.__ONLINE__ = game.onlineClient;
+

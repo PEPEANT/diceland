@@ -19,11 +19,20 @@ export class OnlineClient extends EventTarget {
     this.playerId = null;
     this.online = 0;
     this.socket = null;
+    this.connectUrl = null;
+    this.nickname = null;
+    this._reconnectDelay = 2000;
+    this._reconnectTimer = null;
+    this._manualClose = false;
+    this.staleTimeoutMs = 15000;
+    this._cleanupTimer = null;
 
     // remote players snapshot (id -> { id, nickname, x, y, room, ts })
     this.players = new Map();
 
     this.maxPlayers = 50;
+
+    this._startCleanupLoop();
   }
 
   getPlayerCount() {
@@ -44,6 +53,9 @@ export class OnlineClient extends EventTarget {
 
   async connect({ url, nickname } = {}) {
     if (!url) return;
+    this.connectUrl = url;
+    this.nickname = nickname || this.nickname || 'Guest';
+    this._manualClose = false;
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -52,8 +64,13 @@ export class OnlineClient extends EventTarget {
 
     this.socket.addEventListener('open', () => {
       this.connected = true;
+      this._reconnectDelay = 2000;
+      if (this._reconnectTimer) {
+        clearTimeout(this._reconnectTimer);
+        this._reconnectTimer = null;
+      }
       this.dispatchEvent(new CustomEvent('connected', { detail: { clientId: this.clientId } }));
-      this.socket.send(JSON.stringify({ type: 'hello', nickname: nickname || 'Guest' }));
+      this.socket.send(JSON.stringify({ type: 'hello', nickname: this.nickname || 'Guest' }));
     });
 
     this.socket.addEventListener('message', (ev) => {
@@ -87,6 +104,7 @@ export class OnlineClient extends EventTarget {
             x: typeof p.x === 'number' ? p.x : undefined,
             y: typeof p.y === 'number' ? p.y : undefined,
             room: p.room || 'lobby',
+            cash: typeof p.cash === 'number' ? p.cash : undefined,
           });
         }
         this.online = Number(data.online) || this.online || list.length;
@@ -104,6 +122,7 @@ export class OnlineClient extends EventTarget {
           x: typeof p.x === 'number' ? p.x : undefined,
           y: typeof p.y === 'number' ? p.y : undefined,
           room: p.room || 'lobby',
+          cash: typeof p.cash === 'number' ? p.cash : undefined,
         });
         return;
       }
@@ -111,7 +130,7 @@ export class OnlineClient extends EventTarget {
       if (data.type === 'player_leave') {
         const id = data.playerId;
         if (!id) return;
-        this.removeRemotePlayer(String(id));
+        this._markRemoteStale(String(id));
         return;
       }
 
@@ -125,6 +144,7 @@ export class OnlineClient extends EventTarget {
           x: typeof data.x === 'number' ? data.x : undefined,
           y: typeof data.y === 'number' ? data.y : undefined,
           room: data.room || 'lobby',
+          cash: typeof data.cash === 'number' ? data.cash : undefined,
         });
         return;
       }
@@ -138,17 +158,32 @@ export class OnlineClient extends EventTarget {
           ts: data.ts || Date.now(),
         };
         if (msg.playerId && this.playerId && String(msg.playerId) !== String(this.playerId)) {
-          this.upsertRemotePlayer({ id: String(msg.playerId), nickname: msg.nickname });
+          this.upsertRemotePlayer({
+            id: String(msg.playerId),
+            nickname: msg.nickname,
+            chatMessage: msg.text,
+            chatUntil: Date.now() + 3000,
+          });
         }
         this.dispatchEvent(new CustomEvent('chat', { detail: msg }));
+        return;
+      }
+
+      if (data.type === 'sys') {
+        const msg = {
+          text: data.text || '',
+          ts: data.ts || Date.now(),
+        };
+        this.dispatchEvent(new CustomEvent('sys', { detail: msg }));
       }
     });
 
     const handleClose = () => {
       this.connected = false;
       this.socket = null;
-      this.players.clear();
+      this._markAllStale();
       this.dispatchEvent(new CustomEvent('disconnected'));
+      this._scheduleReconnect();
     };
 
     this.socket.addEventListener('close', handleClose);
@@ -156,6 +191,11 @@ export class OnlineClient extends EventTarget {
   }
 
   disconnect() {
+    this._manualClose = true;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     this.connected = false;
     if (this.socket) {
       try {
@@ -163,7 +203,7 @@ export class OnlineClient extends EventTarget {
       } catch {}
     }
     this.socket = null;
-    this.players.clear();
+    this._markAllStale();
     this.dispatchEvent(new CustomEvent('disconnected'));
   }
 
@@ -176,17 +216,26 @@ export class OnlineClient extends EventTarget {
     this.socket.send(JSON.stringify(payload));
   }
 
+  sendSys(text) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return;
+    this.socket.send(JSON.stringify({ type: 'sys', text: trimmed }));
+  }
+
   // ✅ position sync
-  sendState({ room = 'lobby', x, y } = {}) {
+  sendState({ room = 'lobby', x, y, cash } = {}) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
     if (typeof x !== 'number' || typeof y !== 'number') return;
-    this.socket.send(JSON.stringify({ type: 'state', room, x, y }));
+    const payload = { type: 'state', room, x, y };
+    if (typeof cash === 'number') payload.cash = cash;
+    this.socket.send(JSON.stringify(payload));
   }
 
   upsertRemotePlayer(patch) {
     if (!patch || !patch.id) return;
     const prev = this.players.get(patch.id) || { id: patch.id };
-    const next = { ...prev, ...patch, ts: Date.now() };
+    const next = { ...prev, ...patch, ts: Date.now(), stale: false };
     this.players.set(patch.id, next);
     this.dispatchEvent(new CustomEvent('player_update', { detail: next }));
   }
@@ -199,5 +248,44 @@ export class OnlineClient extends EventTarget {
 
   listPlayers() {
     return Array.from(this.players.values());
+  }
+
+  _markAllStale() {
+    const now = Date.now();
+    for (const [id, player] of this.players.entries()) {
+      this.players.set(id, { ...player, stale: true, ts: now });
+    }
+  }
+
+  _markRemoteStale(id) {
+    const player = this.players.get(id);
+    if (!player) return;
+    this.players.set(id, { ...player, stale: true, ts: Date.now() });
+    this.dispatchEvent(new CustomEvent('player_update', { detail: this.players.get(id) }));
+  }
+
+  _startCleanupLoop() {
+    if (this._cleanupTimer) return;
+    this._cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [id, player] of this.players.entries()) {
+        if (!player?.stale) continue;
+        if (now - (player.ts || 0) > this.staleTimeoutMs) {
+          this.players.delete(id);
+          this.dispatchEvent(new CustomEvent('player_remove', { detail: { id } }));
+        }
+      }
+    }, 2000);
+  }
+
+  _scheduleReconnect() {
+    if (this._manualClose) return;
+    if (this._reconnectTimer || !this.connectUrl) return;
+    const delay = this._reconnectDelay;
+    this._reconnectDelay = Math.min(this._reconnectDelay * 2, 8000);
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this.connect({ url: this.connectUrl, nickname: this.nickname });
+    }, delay);
   }
 }

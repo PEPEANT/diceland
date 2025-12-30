@@ -32,14 +32,34 @@ const formatRankWon = (n) => {
 export class RankingSystem {
     constructor() {
         this.el = document.getElementById('ranking-list');
+        this.container = document.getElementById('ranking-panel');
+        this.toggleBtn = document.getElementById('rank-toggle');
         // 더미 데이터 제거
         this.dummyData = [];
         this.unsub = null;
+        this.onlineClient = null;
+        this._boundUpdate = () => this.render();
     }
 
-    init() {
+    init({ onlineClient } = {}) {
+        this.onlineClient = onlineClient || null;
         // App 상태 구독
         this.unsub = App.subscribe(() => this.render());
+        if (this.toggleBtn) {
+            this.toggleBtn.addEventListener('click', () => {
+                if (!this.container) return;
+                const nextCollapsed = !this.container.classList.contains('collapsed');
+                this.container.classList.toggle('collapsed', nextCollapsed);
+                this.toggleBtn.textContent = nextCollapsed ? '열기' : '닫기';
+            });
+        }
+        if (this.onlineClient?.addEventListener) {
+            this.onlineClient.addEventListener('roster', this._boundUpdate);
+            this.onlineClient.addEventListener('player_update', this._boundUpdate);
+            this.onlineClient.addEventListener('player_remove', this._boundUpdate);
+            this.onlineClient.addEventListener('connected', this._boundUpdate);
+            this.onlineClient.addEventListener('disconnected', this._boundUpdate);
+        }
         // 초기 렌더링
         this.render();
     }
@@ -51,14 +71,41 @@ export class RankingSystem {
         const playerChips = App.getState().chips;
         const totalWon = playerCash + (playerChips * CONFIG.RATE_WON_PER_CHIP);
 
-        // 1. 전체 리스트 생성 (플레이어만)
-        const all = [
-            { name: `${getNickname()} (Player)`, totalWon: totalWon, isMe: true }
-        ];
+        const all = [];
+        const myId = this.onlineClient?.playerId || null;
+        all.push({
+            id: myId || 'local',
+            name: `${getNickname()} (Player)`,
+            totalWon,
+            isMe: true,
+        });
+
+        const remotes = this.onlineClient?.listPlayers?.() || [];
+        for (const rp of remotes) {
+            if (!rp || !rp.id) continue;
+            if (myId && String(rp.id) === String(myId)) continue;
+            const cash = Number(rp.cash) || 0;
+            all.push({
+                id: rp.id,
+                name: rp.nickname || 'Guest',
+                totalWon: cash,
+                isMe: false,
+            });
+        }
+
+        const sorted = all.sort((a, b) => b.totalWon - a.totalWon);
+        const maxItems = 10;
+        let trimmed = sorted.slice(0, maxItems);
+
+        const meIndex = sorted.findIndex((item) => item.isMe);
+        if (meIndex >= maxItems) {
+            trimmed = trimmed.slice(0, maxItems - 1);
+            trimmed.push(sorted[meIndex]);
+        }
 
         // 2. 렌더링
         let html = '';
-        all.forEach((item, idx) => {
+        trimmed.forEach((item, idx) => {
             html += this._createItemHTML(idx + 1, item);
         });
 

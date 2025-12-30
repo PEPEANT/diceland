@@ -81,9 +81,9 @@
   let introIdx = 0;
 
   // ===== 오디오(효과음 mp3) =====
-  const sfxLoad = new Audio('revolvercocking.mp3');
-  const sfxSpin = new Audio('revolver1.mp3');
-  const sfxShot = new Audio('gunshotsound.mp3');
+  const sfxLoad = new Audio('../revolvercocking.mp3');
+  const sfxSpin = new Audio('../revolver1.mp3');
+  const sfxShot = new Audio('../gunshotsound.mp3');
 
   function playSfx(audio) {
     if (!audio) return;
@@ -345,7 +345,7 @@
 
     bullet = {
       // 실린더(중앙) 왼쪽에 세워둠
-      x: cx - 250,
+      x: cx - 180,
       y: cy + 120,
       w: 22,     // 폭(세로 총알이므로 좁게)
       h: 96,     // 길이(세로)

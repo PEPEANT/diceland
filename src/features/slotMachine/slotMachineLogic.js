@@ -1,5 +1,5 @@
-// slotMachineLogic.js - 슬롯 머신 순수 로직
-// Features 모듈 (UI 의존 금지)
+﻿// slotMachineLogic.js - 슬롯 머신 계산 로직
+// Features 모듈 (UI 공통 계산)
 
 /** 심볼 정의 */
 export const SYMBOLS = [
@@ -39,7 +39,7 @@ export function generateSpinResult(reelCount = 3) {
  */
 export function calculateWin(results, bet) {
     if (results.length < 3) {
-        return { winChips: 0, message: '다음 기회에...', color: '#9cf59c' };
+        return { winChips: 0, message: '다음 기회에..', color: '#9cf59c' };
     }
 
     const [s1, s2, s3] = results;
@@ -48,7 +48,7 @@ export function calculateWin(results, bet) {
     if (s1.id === s2.id && s2.id === s3.id) {
         return {
             winChips: bet * s1.payout,
-            message: `★ 잭팟! [${s1.char}] x${s1.payout}!`,
+            message: `잭팟! [${s1.char}] x${s1.payout}!`,
             color: '#ffff00',
         };
     }
@@ -62,7 +62,7 @@ export function calculateWin(results, bet) {
     if (cherryCount >= 2) {
         return {
             winChips: bet * 2,
-            message: '🍒 보너스 (2배)',
+            message: '체리 보너스 (2배)',
             color: '#ffaad4',
         };
     }
@@ -70,13 +70,13 @@ export function calculateWin(results, bet) {
     if (cherryCount === 1) {
         return {
             winChips: Math.floor(bet * 0.5),
-            message: '🍒 환급 (50%)',
+            message: '체리 보상 (50%)',
             color: '#9cf59c',
         };
     }
 
-    // 패배
-    return { winChips: 0, message: '다음 기회에...', color: '#9cf59c' };
+    // 꽝
+    return { winChips: 0, message: '다음 기회에..', color: '#9cf59c' };
 }
 
 /**

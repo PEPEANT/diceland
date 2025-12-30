@@ -135,6 +135,7 @@ export function initMenuSystem({ sceneManager, app, onlineClient, connectUrl } =
         const d = ev?.data;
         if (!d || d.__RR__ !== true) return;
         if (d.type === 'RR_RESULT' && d.result === 'DEATH') {
+            onlineClient?.sendSys?.(`${getNickname()}님이 (총)에 맞아 사망하셨습니다.`);
             if (deathTimer) {
                 clearTimeout(deathTimer);
                 deathTimer = null;
