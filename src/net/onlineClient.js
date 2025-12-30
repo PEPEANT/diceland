@@ -42,7 +42,19 @@ export class OnlineClient extends EventTarget {
   }
 
   async connect({ url, nickname } = {}) {
-    if (!url) return;
+    const isLocalHost =
+      location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+    // ✅ url이 없으면 환경에 맞게 자동 선택
+    if (!url) {
+      url = isLocalHost ? 'ws://localhost:8080' : 'wss://diceland.onrender.com';
+    }
+
+    // ✅ 배포 환경인데 실수로 localhost가 들어오면 Render로 강제 교정
+    if (!isLocalHost && typeof url === 'string' && url.includes('localhost:8080')) {
+      url = 'wss://diceland.onrender.com';
+    }
+
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
