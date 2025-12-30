@@ -89,7 +89,7 @@ class GameApp {
 const game = new GameApp();
 game.start();
 
-// ✅ PC/모바일/시크릿창 모두 같은 서버로 붙게: Render 고정 (로컬도 일단 이걸로 테스트)
+// ✅ PC/모바일 모두 같은 서버로 붙게 Render 고정
 const CONNECT_URL = 'wss://diceland.onrender.com';
 
 initMenuSystem({
