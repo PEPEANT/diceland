@@ -1,4 +1,4 @@
-﻿// main.js - single entry (index.html)
+// main.js - single entry (index.html)
 
 import { App } from './core/appState.js';
 import { SceneManager } from './core/sceneManager.js';
@@ -49,6 +49,10 @@ class GameApp {
 
         this.lastTime = 0;
         this.running = true;
+
+        // ✅ 멀티플레이용 상태 전송 (너무 잦지 않게 5Hz)
+        this._stateSendAcc = 0;
+        this._stateSendInterval = 0.2;
     }
 
     _registerScenes() {
@@ -77,6 +81,23 @@ class GameApp {
         this.sceneManager.update(dt);
         this.sceneManager.render(this.ctx);
 
+        // ✅ 멀티플레이: 내 위치/돈 상태를 서버로 전송 (로비에서 서로 '보이게' 하려면 필요)
+        this._stateSendAcc += dt;
+        if (this._stateSendAcc >= this._stateSendInterval) {
+            this._stateSendAcc = 0;
+
+            const oc = this.onlineClient;
+            if (oc?.isConnected?.()) {
+                const scene = this.sceneManager.currentScene;
+                const room = this.sceneManager.currentSceneId || 'lobby';
+                const p = scene?.player;
+                if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+                    const cash = Number(App.getState?.().cash) || 0;
+                    oc.sendState({ room, x: p.x, y: p.y, cash });
+                }
+            }
+        }
+
         requestAnimationFrame((t) => this._loop(t));
     }
 
@@ -89,8 +110,11 @@ class GameApp {
 const game = new GameApp();
 game.start();
 
-// ✅ PC/모바일 모두 같은 서버로 붙게 Render 고정
-const CONNECT_URL = 'wss://diceland.onrender.com';
+// ✅ 로컬(개발) / 배포(GitHub Pages) 자동 분기
+const CONNECT_URL =
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'ws://localhost:8080'
+    : 'wss://diceland.onrender.com';
 
 initMenuSystem({
     sceneManager: game.sceneManager,
@@ -98,7 +122,6 @@ initMenuSystem({
     onlineClient: game.onlineClient,
     connectUrl: CONNECT_URL,
 });
-
 initPlayerListOverlay({ app: App, onlineClient: game.onlineClient });
 
 const btnCtl = document.getElementById('controls-toggle');

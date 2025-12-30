@@ -1,4 +1,5 @@
 // onlineClient.js - multiplayer minimal WebSocket client
+// - chat + presence + roster + state sync (very small MVP)
 
 function uid() {
   try {
@@ -19,7 +20,7 @@ export class OnlineClient extends EventTarget {
     this.online = 0;
     this.socket = null;
 
-    // remote players snapshot (id -> { id, nickname, x, y, ts })
+    // remote players snapshot (id -> { id, nickname, x, y, room, ts })
     this.players = new Map();
 
     this.maxPlayers = 50;
@@ -42,19 +43,7 @@ export class OnlineClient extends EventTarget {
   }
 
   async connect({ url, nickname } = {}) {
-    const isLocalHost =
-      location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-
-    // ✅ url이 없으면 환경에 맞게 자동 선택
-    if (!url) {
-      url = isLocalHost ? 'ws://localhost:8080' : 'wss://diceland.onrender.com';
-    }
-
-    // ✅ 배포 환경인데 실수로 localhost가 들어오면 Render로 강제 교정
-    if (!isLocalHost && typeof url === 'string' && url.includes('localhost:8080')) {
-      url = 'wss://diceland.onrender.com';
-    }
-
+    if (!url) return;
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -64,9 +53,7 @@ export class OnlineClient extends EventTarget {
     this.socket.addEventListener('open', () => {
       this.connected = true;
       this.dispatchEvent(new CustomEvent('connected', { detail: { clientId: this.clientId } }));
-      if (nickname) {
-        this.socket.send(JSON.stringify({ type: 'hello', nickname }));
-      }
+      this.socket.send(JSON.stringify({ type: 'hello', nickname: nickname || 'Guest' }));
     });
 
     this.socket.addEventListener('message', (ev) => {
@@ -79,13 +66,66 @@ export class OnlineClient extends EventTarget {
       if (!data || typeof data.type !== 'string') return;
 
       if (data.type === 'hello') {
-        this.playerId = data.playerId || null;
+        this.playerId = data.playerId || this.playerId || null;
         return;
       }
 
       if (data.type === 'presence') {
         this.online = Number(data.online) || 0;
         this.dispatchEvent(new CustomEvent('presence', { detail: { online: this.online } }));
+        return;
+      }
+
+      if (data.type === 'roster') {
+        const list = Array.isArray(data.players) ? data.players : [];
+        for (const p of list) {
+          if (!p || !p.id) continue;
+          if (this.playerId && String(p.id) === String(this.playerId)) continue;
+          this.upsertRemotePlayer({
+            id: String(p.id),
+            nickname: p.nickname || 'Guest',
+            x: typeof p.x === 'number' ? p.x : undefined,
+            y: typeof p.y === 'number' ? p.y : undefined,
+            room: p.room || 'lobby',
+          });
+        }
+        this.online = Number(data.online) || this.online || list.length;
+        this.dispatchEvent(new CustomEvent('roster', { detail: { players: this.listPlayers() } }));
+        return;
+      }
+
+      if (data.type === 'player_join' || data.type === 'player_update') {
+        const p = data.player || null;
+        if (!p || !p.id) return;
+        if (this.playerId && String(p.id) === String(this.playerId)) return;
+        this.upsertRemotePlayer({
+          id: String(p.id),
+          nickname: p.nickname || 'Guest',
+          x: typeof p.x === 'number' ? p.x : undefined,
+          y: typeof p.y === 'number' ? p.y : undefined,
+          room: p.room || 'lobby',
+        });
+        return;
+      }
+
+      if (data.type === 'player_leave') {
+        const id = data.playerId;
+        if (!id) return;
+        this.removeRemotePlayer(String(id));
+        return;
+      }
+
+      if (data.type === 'state') {
+        const id = data.playerId;
+        if (!id) return;
+        if (this.playerId && String(id) === String(this.playerId)) return;
+        this.upsertRemotePlayer({
+          id: String(id),
+          nickname: data.nickname || 'Guest',
+          x: typeof data.x === 'number' ? data.x : undefined,
+          y: typeof data.y === 'number' ? data.y : undefined,
+          room: data.room || 'lobby',
+        });
         return;
       }
 
@@ -97,7 +137,9 @@ export class OnlineClient extends EventTarget {
           text: data.text || '',
           ts: data.ts || Date.now(),
         };
-        this.upsertRemotePlayer({ id: msg.playerId, nickname: msg.nickname });
+        if (msg.playerId && this.playerId && String(msg.playerId) !== String(this.playerId)) {
+          this.upsertRemotePlayer({ id: String(msg.playerId), nickname: msg.nickname });
+        }
         this.dispatchEvent(new CustomEvent('chat', { detail: msg }));
       }
     });
@@ -105,6 +147,7 @@ export class OnlineClient extends EventTarget {
     const handleClose = () => {
       this.connected = false;
       this.socket = null;
+      this.players.clear();
       this.dispatchEvent(new CustomEvent('disconnected'));
     };
 
@@ -117,9 +160,7 @@ export class OnlineClient extends EventTarget {
     if (this.socket) {
       try {
         this.socket.close();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     this.socket = null;
     this.players.clear();
@@ -133,6 +174,13 @@ export class OnlineClient extends EventTarget {
     const payload = { type: 'chat', room, text: trimmed };
     if (nickname) payload.nickname = nickname;
     this.socket.send(JSON.stringify(payload));
+  }
+
+  // ✅ position sync
+  sendState({ room = 'lobby', x, y } = {}) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    if (typeof x !== 'number' || typeof y !== 'number') return;
+    this.socket.send(JSON.stringify({ type: 'state', room, x, y }));
   }
 
   upsertRemotePlayer(patch) {

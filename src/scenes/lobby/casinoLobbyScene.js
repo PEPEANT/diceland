@@ -33,7 +33,11 @@ export class CasinoLobbyScene {
         this.app = app;
         this.input = input;
 
-        this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
+        
+        // online sync (MVP)
+        this._netAcc = 0;
+        this._netRoom = 'lobby';
+this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         this.objects = generateLobbyObjects();
 
         this.camera = { x: 0, y: 0 };
@@ -191,6 +195,8 @@ export class CasinoLobbyScene {
         this._updateCamera();
 
         this._updateWaterParticles();
+
+        this._pushNetState(dt);
     }
 
     /**
@@ -209,6 +215,7 @@ export class CasinoLobbyScene {
         this._drawObjects(ctx);
 
         this.player.draw(ctx);
+        this._drawRemotePlayers(ctx);
 
         this._drawLighting(ctx);
 
@@ -372,8 +379,47 @@ export class CasinoLobbyScene {
         });
     }
 
+    _pushNetState() {
+        // State sync is handled in GameApp to avoid duplicate sends.
+    }
+
     _drawGunmanTable(ctx, obj) {
         drawGunmanTableProp(ctx, obj.x, obj.y, obj.scale ?? 1, obj.rotation ?? 0);
+    }
+
+    // ✅ 멀티플레이: 다른 유저를 간단히 표시(점 + 닉네임)
+    _drawRemotePlayers(ctx) {
+        const oc = window.__ONLINE__;
+        if (!oc?.isConnected?.()) return;
+
+        const me = oc.playerId;
+        const list = oc.listPlayers?.() || [];
+        for (const rp of list) {
+            if (!rp || !rp.id) continue;
+            if (me && rp.id === me) continue;
+
+            // 같은 방만 표시 (scene id 기준)
+            if (rp.room && rp.room !== 'lobby') continue;
+
+            if (!Number.isFinite(rp.x) || !Number.isFinite(rp.y)) continue;
+
+            const x = rp.x;
+            const y = rp.y;
+
+            ctx.save();
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = '#4af';
+            ctx.beginPath();
+            ctx.arc(x, y, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            const name = String(rp.nickname || 'Guest');
+            ctx.font = '12px sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.fillText(name, x, y - 16);
+            ctx.restore();
+        }
     }
 
     /**

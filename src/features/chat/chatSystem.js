@@ -1,66 +1,108 @@
-﻿// chatSystem.js - Global chat panel and message store
+// chatSystem.js - global chat panel (left-bottom), persistent across scenes
 
-import { getNickname } from '../../core/profile.js';
-import { getClientIpLike, getIpLikeFromId } from '../../net/netIdentity.js';
-
-const MAX_MESSAGES = 80;
+import { getNickname } from '../profile/profileStore.js';
+import { bubbleSay } from '../../core/bubbles.js';
+import { getIpLikeFromId } from '../../core/netIdentity.js';
 
 export class ChatSystem {
     constructor() {
-        this.initialized = false;
-        this.messages = [];
         this.sceneManager = null;
         this.input = null;
         this.app = null;
+        this.onlineClient = null;
 
         this.panel = null;
         this.logEl = null;
         this.inputEl = null;
-        this.sendEl = null;
+        this.sendBtn = null;
+        this.clearBtn = null;
 
-        this._userAtBottom = true;
-        this._boundGlobalKeydown = null;
-        this._boundScroll = null;
-        this._boundSend = null;
-        this._boundInputKeydown = null;
-        this._boundInputFocus = null;
+        this.messages = [];
+        this.maxMessages = 80;
+
+        this._boundSend = () => this._handleSend();
+        this._boundKey = (e) => this._handleKey(e);
     }
 
     init({ sceneManager, input, app, onlineClient } = {}) {
-        if (this.initialized) return;
-        this.initialized = true;
-        this.sceneManager = sceneManager || null;
-        this.input = input || null;
-        this.app = app || null;
-        this.onlineClient = onlineClient || null;
+        this.sceneManager = sceneManager;
+        this.input = input;
+        this.app = app;
+        this.onlineClient = onlineClient;
 
-        this.panel = document.getElementById('chat-panel');
-        this.logEl = document.getElementById('chat-log');
-        this.inputEl = document.getElementById('chat-input');
-        this.sendEl = document.getElementById('chat-send');
-
-        if (!this.panel || !this.logEl || !this.inputEl || !this.sendEl) {
-            console.warn('ChatSystem: required DOM elements not found.');
-            return;
-        }
+        this.panel = document.getElementById('global-chat');
+        this.logEl = document.getElementById('global-chat-log');
+        this.inputEl = document.getElementById('global-chat-input');
+        this.sendBtn = document.getElementById('global-chat-send');
+        this.clearBtn = document.getElementById('global-chat-clear');
 
         this._bindEvents();
 
-        if (this.onlineClient?.addEventListener) {
+        // incoming chat from server
+        if (this.onlineClient) {
             this.onlineClient.addEventListener('chat', (ev) => {
                 const msg = ev?.detail;
                 if (!msg) return;
+
+                // ✅ 내가 보낸 메시지가 서버에서 다시 브로드캐스트되면 중복 표시되므로 무시
+                if (this.onlineClient?.playerId && msg.playerId === this.onlineClient.playerId) return;
+
                 this.receiveMessage({
-                    id: `${msg.playerId}_${msg.ts}`,
-                    ts: msg.ts,
-                    room: msg.room,
+                    sender: msg.nickname,
                     senderId: msg.playerId,
-                    senderLabel: getIpLikeFromId(msg.playerId),
-                    senderName: msg.nickname,
                     text: msg.text,
+                    room: msg.room || 'lobby',
+                    ts: msg.ts || Date.now(),
                 });
             });
         }
+
+        return this;
+    }
+
+    _bindEvents() {
+        this.sendBtn?.addEventListener('click', this._boundSend);
+        this.clearBtn?.addEventListener('click', () => this._clear());
+        this.inputEl?.addEventListener('keydown', this._boundKey);
+    }
+
+    _handleKey(e) {
+        if (!e) return;
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this._handleSend();
+        }
+    }
+
+    _handleSend() {
+        if (!this.inputEl) return;
+        const trimmed = String(this.inputEl.value || '').trim();
+        if (!trimmed) return;
+
+        // ✅ 로컬 UI에는 즉시 출력하고, (연결되어 있으면) sendLocal 내부에서 서버로도 전송
+        this.sendLocal(trimmed);
+
+        this.inputEl.value = '';
+        this.inputEl.focus();
+    }
+
+    _clear() {
+        this.messages = [];
+        this._render();
+    }
+
+    receiveMessage({ sender, senderId, text, room = 'lobby', ts = Date.now() } = {}) {
+        const senderLabel = senderId ? `${sender || 'Guest'} (${getIpLikeFromId(senderId)})` : (sender || 'Guest');
+        const msg = {
+            sender: sender || 'Guest',
+            senderId: senderId || null,
+            senderLabel,
+            text: String(text || ''),
+            room,
+            ts,
+        };
+        this._pushMessage(msg);
+        this._render();
     }
 
     sendLocal(text) {
@@ -68,200 +110,87 @@ export class ChatSystem {
         if (!trimmed) return;
 
         const message = {
-            id: this._createId(),
-            ts: Date.now(),
-            room: this._getRoom(),
-            senderId: 'local',
-            senderName: getNickname(),
-            senderLabel: getClientIpLike(),
+            sender: getNickname() || 'Guest',
+            senderId: this.onlineClient?.playerId || null,
+            senderLabel: this.onlineClient?.playerId
+                ? `${getNickname() || 'Guest'} (${getIpLikeFromId(this.onlineClient.playerId)})`
+                : (getNickname() || 'Guest'),
             text: trimmed,
+            room: 'lobby',
+            ts: Date.now(),
         };
 
-        this._addMessage(message);
-
+        // commands
         if (trimmed === '@초기화') {
-            const ok = this.app?.reset?.();
-            const reply = ok ? '초기화되었습니다.' : '이미 사용했습니다.';
-            this._sayCurrentPlayer(reply);
-        } else {
-            this._sayCurrentPlayer(trimmed);
-        }
-    }
-
-    receiveMessage(messageObj) {
-        if (!messageObj || typeof messageObj !== 'object') return;
-        const text = String(messageObj.text ?? '').trim();
-        if (!text) return;
-
-        const message = {
-            id: messageObj.id || this._createId(),
-            ts: Number.isFinite(messageObj.ts) ? messageObj.ts : Date.now(),
-            room: messageObj.room || this._getRoom(),
-            senderId: messageObj.senderId || 'unknown',
-            senderName: messageObj.senderName || messageObj.nickname || '알 수 없음',
-            senderLabel: messageObj.senderLabel || (messageObj.playerId ? getIpLikeFromId(messageObj.playerId) : messageObj.senderId) || 'unknown',
-            text,
-        };
-
-        this._addMessage(message);
-    }
-
-    // ---- Internal helpers ----
-
-    _bindEvents() {
-        this._boundSend = () => this._handleSend();
-        this._boundInputKeydown = (e) => this._handleInputKeydown(e);
-        this._boundInputFocus = () => this._handleInputFocus();
-        this._boundScroll = () => this._handleScroll();
-        this._boundGlobalKeydown = (e) => this._handleGlobalKeydown(e);
-
-        this.sendEl.addEventListener('click', this._boundSend);
-        this.inputEl.addEventListener('keydown', this._boundInputKeydown);
-        this.inputEl.addEventListener('focus', this._boundInputFocus);
-        this.logEl.addEventListener('scroll', this._boundScroll);
-        window.addEventListener('keydown', this._boundGlobalKeydown, true);
-    }
-
-    _handleGlobalKeydown(e) {
-        const input = this.inputEl;
-        const isFocused = document.activeElement === input;
-
-        if (this._isModalOpen()) return;
-        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-
-        if (!isFocused && e.code === 'KeyT' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.openChat();
+            this._pushMessage({
+                ...message,
+                text: '[시스템] 채팅 로그 초기화',
+            });
+            this._render();
             return;
         }
 
-        if (!isFocused && e.code === 'KeyN' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            const scene = this.sceneManager?.getCurrentScene?.() || this.sceneManager?.currentScene;
-            const player = scene?.player;
-            if (player && Number.isFinite(player.x) && Number.isFinite(player.y)) {
-                const x = Math.round(player.x);
-                const y = Math.round(player.y);
-                this.sendLocal(`현재 위치: ${x}, ${y}`);
-            } else {
-                this.sendLocal('현재 위치: 알 수 없음');
-            }
-            return;
+        this._pushMessage(message);
+        this._render();
+
+        // bubble say (current player)
+        this._sayCurrentPlayer(trimmed);
+
+        // ✅ 온라인 연결되어 있으면 서버로도 전송 (다른 유저에게 표시)
+        try {
+            this.onlineClient?.sendChat?.(trimmed, message.room, getNickname());
+        } catch {
+            /* ignore */
         }
-
-        if (e.key === 'Enter') {
-            if (!isFocused) {
-                e.preventDefault();
-                e.stopPropagation();
-                this.openChat();
-                return;
-            }
-        }
-
-        if (e.key === 'Escape' && isFocused) {
-            e.preventDefault();
-            e.stopPropagation();
-            input.blur();
-        }
-    }
-
-    openChat() {
-        if (this.input && typeof this.input.clear === 'function') {
-            this.input.clear();
-        }
-        this.inputEl.focus();
-    }
-
-    _handleInputKeydown(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (this._isModalOpen()) {
-                this.inputEl.blur();
-                return;
-            }
-            this._handleSend();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            this.inputEl.blur();
-        }
-    }
-
-    _handleInputFocus() {
-        if (this.input) {
-            this.input.clear();
-        }
-    }
-
-    _handleSend() {
-        if (this._isModalOpen()) {
-            this.inputEl.blur();
-            return;
-        }
-        const text = this.inputEl.value;
-        const trimmed = String(text || '').trim();
-        if (!trimmed) return;
-        if (this.onlineClient?.isConnected?.()) {
-            this.onlineClient.sendChat(trimmed, 'lobby', getNickname());
-        } else {
-            this.sendLocal(trimmed);
-        }
-        this.inputEl.value = '';
-        this.inputEl.blur();
-    }
-
-    _handleScroll() {
-        this._userAtBottom = this._isAtBottom();
-    }
-
-    _addMessage(message) {
-        this.messages.push(message);
-        if (this.messages.length > MAX_MESSAGES) {
-            this.messages.shift();
-            if (this.logEl.firstChild) {
-                this.logEl.removeChild(this.logEl.firstChild);
-            }
-        }
-
-        const line = document.createElement('div');
-        line.className = 'chat-line';
-        line.textContent = this._formatMessage(message);
-        const shouldScroll = this._userAtBottom || this._isAtBottom();
-        this.logEl.appendChild(line);
-
-        if (shouldScroll) {
-            this.logEl.scrollTop = this.logEl.scrollHeight;
-        }
-    }
-
-    _formatMessage(message) {
-        const ip = message.senderLabel || message.senderId || 'unknown';
-        const name = message.senderName ? `(${message.senderName})` : '';
-        return `${ip}${name}: ${message.text}`;
-    }
-
-    _getRoom() {
-        return this.sceneManager?.getCurrentSceneId?.() || 'lobby';
     }
 
     _sayCurrentPlayer(text) {
-        const scene = this.sceneManager?.getCurrentScene?.() || this.sceneManager?.currentScene;
-        if (scene?.player?.say) {
-            scene.player.say(text);
+        const scene = this.sceneManager?.currentScene;
+        const player = scene?.player;
+        if (!player) return;
+        bubbleSay(player, text);
+    }
+
+    _pushMessage(msg) {
+        this.messages.push(msg);
+        if (this.messages.length > this.maxMessages) {
+            this.messages.splice(0, this.messages.length - this.maxMessages);
         }
     }
 
-    _createId() {
-        return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    }
+    _render() {
+        if (!this.logEl) return;
+        this.logEl.innerHTML = '';
 
-    _isAtBottom() {
-        const { scrollTop, clientHeight, scrollHeight } = this.logEl;
-        return scrollTop + clientHeight >= scrollHeight - 4;
-    }
+        for (const m of this.messages) {
+            const row = document.createElement('div');
+            row.className = 'chat-row';
 
-    _isModalOpen() {
-        return !!document.querySelector('.modal:not(.hidden)');
+            const head = document.createElement('div');
+            head.className = 'chat-head';
+
+            const who = document.createElement('span');
+            who.className = 'chat-who';
+            who.textContent = m.senderLabel;
+
+            const when = document.createElement('span');
+            when.className = 'chat-when';
+            when.textContent = new Date(m.ts).toLocaleTimeString();
+
+            head.appendChild(who);
+            head.appendChild(when);
+
+            const body = document.createElement('div');
+            body.className = 'chat-body';
+            body.textContent = m.text;
+
+            row.appendChild(head);
+            row.appendChild(body);
+
+            this.logEl.appendChild(row);
+        }
+
+        // auto scroll
+        this.logEl.scrollTop = this.logEl.scrollHeight;
     }
 }

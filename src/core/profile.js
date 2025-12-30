@@ -28,6 +28,10 @@ export function loadProfile() {
     return cachedProfile;
 }
 
+export function getProfile() {
+    return loadProfile();
+}
+
 export function saveProfile(profile) {
     const next = normalizeProfile(profile);
     cachedProfile = next;

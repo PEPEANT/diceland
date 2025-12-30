@@ -1,75 +1,138 @@
-// server.js - DiceLand lobby WebSocket server (MVP)
-// - Assigns playerId
-// - Broadcasts presence
-// - Broadcasts lobby chat
+// server.js - DiceLand minimal WebSocket server (Render-ready)
+// Features:
+// - presence count
+// - chat relay
+// - roster (who is online)
+// - state sync (x,y,room) so players can "see" each other
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const PORT = Number(process.env.PORT || 8080);
 
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('DiceLand WS OK');
+});
+
 const wss = new WebSocketServer({ server });
 
 let nextId = 1;
 
-function broadcast(obj) {
-  const data = JSON.stringify(obj);
-  wss.clients.forEach((client) => {
-    if (client.readyState === client.OPEN) {
-      client.send(data);
-    }
-  });
+// ws -> player
+const clients = new Map();
+
+function safeNickname(n) {
+  const s = String(n || '').trim();
+  if (!s) return 'Guest';
+  return s.slice(0, 16);
 }
 
-function updatePresence() {
-  const online = wss.clients.size;
-  broadcast({ type: 'presence', online });
+function send(ws, obj) {
+  if (!ws || ws.readyState !== ws.OPEN) return;
+  ws.send(JSON.stringify(obj));
+}
+
+function broadcast(obj, exceptWs = null) {
+  const msg = JSON.stringify(obj);
+  for (const ws of clients.keys()) {
+    if (exceptWs && ws === exceptWs) continue;
+    if (ws.readyState === ws.OPEN) ws.send(msg);
+  }
+}
+
+function presence() {
+  broadcast({ type: 'presence', online: clients.size });
+}
+
+function roster() {
+  return Array.from(clients.values()).map((p) => ({
+    id: p.id,
+    nickname: p.nickname,
+    room: p.room,
+    x: p.x,
+    y: p.y,
+  }));
 }
 
 wss.on('connection', (ws) => {
-  const playerId = `p${nextId++}`;
-  ws._playerId = playerId;
-  ws._nickname = 'Guest';
+  const player = {
+    id: String(nextId++),
+    nickname: 'Guest',
+    room: 'lobby',
+    x: 0,
+    y: 0,
+    joinedAt: Date.now(),
+  };
 
-  ws.send(JSON.stringify({ type: 'hello', playerId }));
-  updatePresence();
+  clients.set(ws, player);
 
-  ws.on('message', (raw) => {
-    let msg;
+  // tell self id + initial roster
+  send(ws, { type: 'hello', playerId: player.id });
+  send(ws, { type: 'roster', players: roster(), online: clients.size });
+
+  // tell others someone joined
+  broadcast({ type: 'player_join', player }, ws);
+  presence();
+
+  ws.on('message', (buf) => {
+    let data;
     try {
-      msg = JSON.parse(raw.toString());
+      data = JSON.parse(buf.toString());
     } catch {
       return;
     }
-    if (!msg || typeof msg.type !== 'string') return;
+    if (!data || typeof data.type !== 'string') return;
 
-    if (msg.type === 'hello') {
-      if (typeof msg.nickname === 'string' && msg.nickname.trim()) {
-        ws._nickname = msg.nickname.trim().slice(0, 12);
-      }
+    if (data.type === 'hello') {
+      player.nickname = safeNickname(data.nickname);
+      send(ws, { type: 'hello', playerId: player.id });
+      broadcast({ type: 'player_update', player }, ws);
       return;
     }
 
-    if (msg.type === 'chat') {
-      const text = String(msg.text || '').trim();
-      if (!text) return;
-      if (typeof msg.nickname === 'string' && msg.nickname.trim()) {
-        ws._nickname = msg.nickname.trim().slice(0, 12);
-      }
+    if (data.type === 'state') {
+      if (typeof data.x === 'number') player.x = data.x;
+      if (typeof data.y === 'number') player.y = data.y;
+      if (typeof data.room === 'string' && data.room.trim()) player.room = data.room.trim();
+
       broadcast({
-        type: 'chat',
-        room: msg.room || 'lobby',
-        playerId: ws._playerId,
-        nickname: ws._nickname,
-        text,
+        type: 'state',
+        playerId: player.id,
+        nickname: player.nickname,
+        room: player.room,
+        x: player.x,
+        y: player.y,
         ts: Date.now(),
       });
+      return;
+    }
+
+    if (data.type === 'chat') {
+      const text = String(data.text || '').trim();
+      if (!text) return;
+      const room = typeof data.room === 'string' && data.room.trim() ? data.room.trim() : 'lobby';
+
+      broadcast({
+        type: 'chat',
+        room,
+        playerId: player.id,
+        nickname: player.nickname,
+        text: text.slice(0, 280),
+        ts: Date.now(),
+      });
+      return;
     }
   });
 
   ws.on('close', () => {
-    updatePresence();
+    clients.delete(ws);
+    broadcast({ type: 'player_leave', playerId: player.id });
+    presence();
+  });
+
+  ws.on('error', () => {
+    try { ws.close(); } catch {}
   });
 });
 
