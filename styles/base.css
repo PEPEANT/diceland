@@ -28,7 +28,7 @@ body {
     touch-action: none;
 }
 
-#game-root {
+#app {
     position: fixed;
     inset: 0;
     width: 100vw;
@@ -40,6 +40,8 @@ body {
 /* Canvas */
 #gameCanvas {
     display: block;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     touch-action: none;

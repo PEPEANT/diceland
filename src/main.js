@@ -78,14 +78,13 @@ class GameApp {
         const resize = () => {
             const vw = window.visualViewport?.width ?? window.innerWidth;
             const vh = window.visualViewport?.height ?? window.innerHeight;
-            const dpr = Math.max(1, window.devicePixelRatio || 1);
             this.canvas.style.width = `${vw}px`;
             this.canvas.style.height = `${vh}px`;
-            this.canvas.width = Math.floor(vw * dpr);
-            this.canvas.height = Math.floor(vh * dpr);
+            this.canvas.width = Math.floor(vw);
+            this.canvas.height = Math.floor(vh);
             this.canvas._logicalWidth = vw;
             this.canvas._logicalHeight = vh;
-            this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         };
         window.__RESIZE_CANVAS__ = resize;
         resize();
