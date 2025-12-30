@@ -1,0 +1,28 @@
+/* base.css - 리셋/공통 변수/기본 스타일 */
+@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Orbitron:wght@500;700&family=Rye&display=swap');
+
+:root {
+    --bg: #111;
+    --panel: rgba(0, 0, 0, 0.70);
+    --border: #444;
+    --gold: #ffd700;
+    --green: #4ade80;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #1a1a1a;
+    color: #fff;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    touch-action: none;
+}
+
+/* Canvas */
+#gameCanvas {
+    display: block;
+}
