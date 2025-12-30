@@ -1,4 +1,4 @@
-
+﻿
 import { ACTIONS, CONFIG, clamp } from '../../core/constants.js';
 import { Player } from '../../core/player.js';
 import { getNickname } from '../../core/profile.js';
@@ -344,7 +344,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             const near = Math.hypot(dx, dy) <= (CONFIG.INTERACTION_RANGE || 60);
             if (near) {
                 this.nearest = table;
-                this.ui.showPrompt('F 키로 상호작용');
+                this.ui.showPrompt('F ?ㅻ줈 ?곹샇?묒슜');
                 return;
             }
         }
@@ -356,11 +356,13 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
     /**
      */
     _updateCamera() {
-        const targetX = this.player.x - this.canvas.width / 2;
-        const targetY = this.player.y - this.canvas.height / 2;
+        const viewW = this.canvas._logicalWidth || this.canvas.width;
+        const viewH = this.canvas._logicalHeight || this.canvas.height;
+        const targetX = this.player.x - viewW / 2;
+        const targetY = this.player.y - viewH / 2;
 
-        this.camera.x = clamp(targetX, 0, LOBBY_W - this.canvas.width);
-        this.camera.y = clamp(targetY, 0, LOBBY_H - this.canvas.height);
+        this.camera.x = clamp(targetX, 0, LOBBY_W - viewW);
+        this.camera.y = clamp(targetY, 0, LOBBY_H - viewH);
     }
 
     /**
@@ -397,7 +399,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         drawGunmanTableProp(ctx, obj.x, obj.y, obj.scale ?? 1, obj.rotation ?? 0);
     }
 
-    // ✅ 멀티플레이: 다른 유저를 간단히 표시(점 + 닉네임)
+    // ??硫?고뵆?덉씠: ?ㅻⅨ ?좎?瑜?媛꾨떒???쒖떆(??+ ?됰꽕??
     _drawRemotePlayers(ctx) {
         const oc = window.__ONLINE__;
         if (!oc?.isConnected?.()) return;
@@ -408,7 +410,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             if (!rp || !rp.id) continue;
             if (me && rp.id === me) continue;
 
-            // 같은 방만 표시 (scene id 기준)
+            // 媛숈? 諛⑸쭔 ?쒖떆 (scene id 湲곗?)
             if (rp.room && rp.room !== this._netRoom) continue;
 
             if (!Number.isFinite(rp.x) || !Number.isFinite(rp.y)) continue;
@@ -469,6 +471,10 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
     /**
      */
     _resize() {
+        if (window.__RESIZE_CANVAS__) {
+            window.__RESIZE_CANVAS__();
+            return;
+        }
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
     }
@@ -915,3 +921,5 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         ctx.closePath();
     }
 }
+
+

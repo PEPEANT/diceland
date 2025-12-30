@@ -218,9 +218,11 @@ export class CasinoScene {
      * @param {CanvasRenderingContext2D} ctx
      */
     render(ctx) {
+        const viewW = this.canvas._logicalWidth || this.canvas.width;
+        const viewH = this.canvas._logicalHeight || this.canvas.height;
         // ë°°ê²½
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.fillRect(0, 0, viewW, viewH);
 
         ctx.save();
         ctx.translate(-this.camera.x, -this.camera.y);
@@ -464,15 +466,17 @@ export class CasinoScene {
      * ì¹´ë©”???…ë°?´íŠ¸
      */
     _updateCamera() {
+        const viewW = this.canvas._logicalWidth || this.canvas.width;
+        const viewH = this.canvas._logicalHeight || this.canvas.height;
         this.camera.x = clamp(
-            this.player.x - this.canvas.width / 2,
+            this.player.x - viewW / 2,
             0,
-            Math.max(0, MAP_W - this.canvas.width)
+            Math.max(0, MAP_W - viewW)
         );
         this.camera.y = clamp(
-            this.player.y - this.canvas.height / 2,
+            this.player.y - viewH / 2,
             0,
-            Math.max(0, MAP_H - this.canvas.height)
+            Math.max(0, MAP_H - viewH)
         );
     }
 
@@ -687,6 +691,10 @@ export class CasinoScene {
          * 由ъ궗?댁쫰
          */
         _resize() {
+            if (window.__RESIZE_CANVAS__) {
+                window.__RESIZE_CANVAS__();
+                return;
+            }
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
         }
@@ -1020,6 +1028,16 @@ export class CasinoScene {
             ctx.closePath();
         }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

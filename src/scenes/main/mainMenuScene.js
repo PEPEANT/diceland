@@ -16,20 +16,22 @@ export class MainMenuScene {
     update() {}
 
     render(ctx) {
+        const viewW = this.canvas._logicalWidth || this.canvas.width;
+        const viewH = this.canvas._logicalHeight || this.canvas.height;
         ctx.fillStyle = '#070707';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.fillRect(0, 0, viewW, viewH);
 
         const g = ctx.createRadialGradient(
-            this.canvas.width * 0.5,
-            this.canvas.height * 0.45,
+            viewW * 0.5,
+            viewH * 0.45,
             10,
-            this.canvas.width * 0.5,
-            this.canvas.height * 0.5,
-            Math.max(this.canvas.width, this.canvas.height) * 0.7
+            viewW * 0.5,
+            viewH * 0.5,
+            Math.max(viewW, viewH) * 0.7
         );
         g.addColorStop(0, 'rgba(0,0,0,0)');
         g.addColorStop(1, 'rgba(0,0,0,0.65)');
         ctx.fillStyle = g;
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.fillRect(0, 0, viewW, viewH);
     }
 }
