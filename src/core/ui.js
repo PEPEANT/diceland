@@ -33,7 +33,8 @@ export class UIManager {
      */
     showPrompt(text) {
         if (this.elPrompt) {
-            this.elPrompt.textContent = text;
+            const safeText = this._sanitizePromptText(text);
+            this.elPrompt.textContent = safeText;
             this.elPrompt.style.display = 'block';
         }
     }
@@ -45,6 +46,15 @@ export class UIManager {
         if (this.elPrompt) {
             this.elPrompt.style.display = 'none';
         }
+    }
+
+    _sanitizePromptText(text) {
+        let value = typeof text === 'string' ? text : '';
+        value = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+        if (!value || value.includes('\ufffd')) {
+            return 'F 상호작용';
+        }
+        return value;
     }
 
     /**

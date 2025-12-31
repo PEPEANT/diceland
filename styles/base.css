@@ -24,7 +24,7 @@ html, body {
 body {
     background: #1a1a1a;
     color: #fff;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     touch-action: none;
 }
 

@@ -106,7 +106,6 @@ export class CasinoScene {
 
         // ìº”ë²„??ë¦¬ì‚¬?´ì¦ˆ
         this._resize();
-        window.addEventListener('resize', () => this._resize());
 
         this.exitLock = 0.8;
 
@@ -128,6 +127,7 @@ export class CasinoScene {
         // ?…ë ¥ ì´ˆê¸°??
         this.input.clear();
         this.input.onAction = null;
+        this.ui.setMobileActionHandler(null);
     }
 
     /**
@@ -690,14 +690,15 @@ export class CasinoScene {
         /**
          * 由ъ궗?댁쫰
          */
-        _resize() {
-            if (window.__RESIZE_CANVAS__) {
-                window.__RESIZE_CANVAS__();
-                return;
-            }
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
+    _resize() {
+        if (window.__RESIZE_CANVAS__) {
+            window.__RESIZE_CANVAS__();
+            return;
         }
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
     
         // ---- Draw Methods ----
     

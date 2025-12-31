@@ -24,6 +24,10 @@ export class OnlineClient extends EventTarget {
     this._reconnectDelay = 2000;
     this._reconnectTimer = null;
     this._manualClose = false;
+    this._reconnectAttempts = 0;
+    this._maxReconnectAttempts = 4;
+    this._loggedReconnectError = false;
+    this._loggedLocalOffline = false;
     this.staleTimeoutMs = 15000;
     this._cleanupTimer = null;
 
@@ -61,10 +65,13 @@ export class OnlineClient extends EventTarget {
     }
 
     this.socket = new WebSocket(url);
+    let closed = false;
 
     this.socket.addEventListener('open', () => {
       this.connected = true;
       this._reconnectDelay = 2000;
+      this._reconnectAttempts = 0;
+      this._loggedReconnectError = false;
       if (this._reconnectTimer) {
         clearTimeout(this._reconnectTimer);
         this._reconnectTimer = null;
@@ -179,6 +186,8 @@ export class OnlineClient extends EventTarget {
     });
 
     const handleClose = () => {
+      if (closed) return;
+      closed = true;
       this.connected = false;
       this.socket = null;
       this._markAllStale();
@@ -281,11 +290,46 @@ export class OnlineClient extends EventTarget {
   _scheduleReconnect() {
     if (this._manualClose) return;
     if (this._reconnectTimer || !this.connectUrl) return;
+    const limit = this._getReconnectLimit();
+    if (this._reconnectAttempts >= limit) {
+      if (limit <= 1) {
+        if (!this._loggedLocalOffline) {
+          this._loggedLocalOffline = true;
+          console.warn('[OnlineClient] 서버 미가동(offline).');
+        }
+      } else if (!this._loggedReconnectError) {
+        this._loggedReconnectError = true;
+        console.warn('[OnlineClient] Reconnect limit reached.');
+      }
+      return;
+    }
     const delay = this._reconnectDelay;
     this._reconnectDelay = Math.min(this._reconnectDelay * 2, 8000);
+    this._reconnectAttempts += 1;
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;
       this.connect({ url: this.connectUrl, nickname: this.nickname });
     }, delay);
+  }
+
+  _getReconnectLimit() {
+    if (this._isLocalPage() && this._isLocalWsUrl(this.connectUrl)) {
+      return 1;
+    }
+    return this._maxReconnectAttempts;
+  }
+
+  _isLocalPage() {
+    return ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  }
+
+  _isLocalWsUrl(url) {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+    } catch {
+      return false;
+    }
   }
 }

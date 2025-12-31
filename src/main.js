@@ -13,6 +13,7 @@ import { initServerPresence } from './core/serverPresence.js';
 import { initMenuSystem } from './features/menu/menuSystem.js';
 import { OnlineClient } from './net/onlineClient.js';
 import { initPlayerListOverlay } from './features/players/playerListOverlay.js';
+import { makeDraggable, resetPanelPositions } from './core/draggablePanels.js';
 
 class GameApp {
     constructor() {
@@ -51,6 +52,7 @@ class GameApp {
         this.running = true;
 
         this._bindCanvasResize();
+        this._bindVisibilityReset();
 
         // ??硫?고뵆?덉씠???곹깭 ?꾩넚 (?덈Т ??? ?딄쾶 5Hz)
         this._stateSendAcc = 0;
@@ -78,13 +80,14 @@ class GameApp {
         const resize = () => {
             const vw = window.visualViewport?.width ?? window.innerWidth;
             const vh = window.visualViewport?.height ?? window.innerHeight;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
             this.canvas.style.width = `${vw}px`;
             this.canvas.style.height = `${vh}px`;
-            this.canvas.width = Math.floor(vw);
-            this.canvas.height = Math.floor(vh);
+            this.canvas.width = Math.floor(vw * dpr);
+            this.canvas.height = Math.floor(vh * dpr);
             this.canvas._logicalWidth = vw;
             this.canvas._logicalHeight = vh;
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         };
         window.__RESIZE_CANVAS__ = resize;
         resize();
@@ -98,7 +101,11 @@ class GameApp {
     _loop(time) {
         if (!this.running) return;
 
-        const dt = (time - this.lastTime) / 1000;
+        let dt = 0;
+        if (this.lastTime) {
+            dt = (time - this.lastTime) / 1000;
+            dt = Math.min(dt, 1 / 20);
+        }
         this.lastTime = time;
 
         this.sceneManager.update(dt);
@@ -128,16 +135,30 @@ class GameApp {
         this.running = false;
         this.input.unbind();
     }
+
+    _bindVisibilityReset() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                this.lastTime = 0;
+            }
+        });
+    }
 }
 
 const game = new GameApp();
 game.start();
 
 // ??濡쒖뺄(媛쒕컻) / 諛고룷(GitHub Pages) ?먮룞 遺꾧린
-const useLocalWs = localStorage.getItem('DICELAND_LOCAL_WS') === '1';
-const CONNECT_URL = useLocalWs
-    ? 'ws://localhost:8080'
-    : 'wss://diceland.onrender.com';
+const wsOverride = localStorage.getItem('DICELAND_WS_URL');
+const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const localFlag = localStorage.getItem('DICELAND_LOCAL_WS') === '1';
+if (!isLocalhost && localFlag) {
+    localStorage.setItem('DICELAND_LOCAL_WS', '0');
+}
+const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const CONNECT_URL = wsOverride
+    ? wsOverride
+    : (isLocalhost ? 'ws://localhost:8080' : `${wsProtocol}://diceland.onrender.com`);
 
 initMenuSystem({
     sceneManager: game.sceneManager,
@@ -146,6 +167,17 @@ initMenuSystem({
     connectUrl: CONNECT_URL,
 });
 initPlayerListOverlay({ app: App, onlineClient: game.onlineClient });
+
+makeDraggable({
+    panelEl: document.getElementById('ranking-panel'),
+    handleEl: document.querySelector('#ranking-panel .ranking-title'),
+});
+makeDraggable({
+    panelEl: document.getElementById('chat-panel'),
+    handleEl: document.querySelector('#chat-panel .chat-header'),
+});
+
+window.__RESET_PANEL_POSITIONS__ = resetPanelPositions;
 
 const btnCtl = document.getElementById('controls-toggle');
 btnCtl?.addEventListener('click', () => {

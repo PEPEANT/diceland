@@ -47,6 +47,14 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         this.ui = new UIManager();
         this.rrUI = null;
 
+        this._touchStartX = 0;
+        this._touchStartY = 0;
+
+        this._handleTouchStart = this._handleTouchStart.bind(this);
+        this._handleTouchMove = this._handleTouchMove.bind(this);
+        this._handleTouchEnd = this._handleTouchEnd.bind(this);
+        this._handleMobileAction = this._handleMobileAction.bind(this);
+
         this.waterParticles = [];
         for (let i = 0; i < 30; i++) {
             this.waterParticles.push({
@@ -137,8 +145,10 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
 
         this.input.onAction = (action) => this.handleAction(action);
 
+        this._bindTouchControls();
+        this.ui.setMobileActionHandler(this._handleMobileAction);
+
         this._resize();
-        window.addEventListener('resize', this._resizeHandler);
 
         this._sendImmediateState();
     }
@@ -158,7 +168,8 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         this.nearest = null;
         this.ui.hidePrompt();
         this.input.onAction = null;
-        window.removeEventListener('resize', this._resizeHandler);
+        this._unbindTouchControls();
+        this.ui.setMobileActionHandler(null);
     }
 
     /**
@@ -344,7 +355,7 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
             const near = Math.hypot(dx, dy) <= (CONFIG.INTERACTION_RANGE || 60);
             if (near) {
                 this.nearest = table;
-                this.ui.showPrompt('F ?ㅻ줈 ?곹샇?묒슜');
+                this.ui.showPrompt('F 키로 상호작용');
                 return;
             }
         }
@@ -468,6 +479,83 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         ctx.restore();
     }
 
+    _bindTouchControls() {
+        const zone = document.getElementById('joystick-zone');
+        const knob = document.getElementById('joystick-knob');
+        if (!zone || !knob) return;
+
+        if (this.input.isMobile) {
+            zone.style.display = 'block';
+            zone.addEventListener('touchstart', this._handleTouchStart, { passive: false });
+            zone.addEventListener('touchmove', this._handleTouchMove, { passive: false });
+            zone.addEventListener('touchend', this._handleTouchEnd);
+        } else {
+            document.addEventListener('touchstart', this._handleTouchStart, { passive: false });
+            document.addEventListener('touchmove', this._handleTouchMove, { passive: false });
+            document.addEventListener('touchend', this._handleTouchEnd);
+        }
+    }
+
+    _unbindTouchControls() {
+        const zone = document.getElementById('joystick-zone');
+        if (zone) {
+            zone.removeEventListener('touchstart', this._handleTouchStart);
+            zone.removeEventListener('touchmove', this._handleTouchMove);
+            zone.removeEventListener('touchend', this._handleTouchEnd);
+        }
+        document.removeEventListener('touchstart', this._handleTouchStart);
+        document.removeEventListener('touchmove', this._handleTouchMove);
+        document.removeEventListener('touchend', this._handleTouchEnd);
+    }
+
+    _handleTouchStart(e) {
+        if (this.rrUI?.isOpen) return;
+        const zone = document.getElementById('joystick-zone');
+        if (!this.input.isMobile && e.target !== this.canvas) return;
+
+        e.preventDefault();
+        const t = e.touches[0];
+        this._touchStartX = t.clientX;
+        this._touchStartY = t.clientY;
+        this.input.setJoystick({ x: 0, y: 0 });
+
+        if (!this.input.isMobile && zone) {
+            this.ui.showJoystickZone(true, t.clientX, t.clientY);
+        }
+    }
+
+    _handleTouchMove(e) {
+        if (this.rrUI?.isOpen) return;
+        if (!this.input.getJoystickVector()) return;
+
+        e.preventDefault();
+        const t = e.touches[0];
+        const dx = t.clientX - this._touchStartX;
+        const dy = t.clientY - this._touchStartY;
+        const dist = Math.min(50, Math.sqrt(dx * dx + dy * dy));
+        const ang = Math.atan2(dy, dx);
+
+        const mx = Math.cos(ang) * dist;
+        const my = Math.sin(ang) * dist;
+
+        this.ui.updateJoystickKnob(mx, my);
+        this.input.setJoystick({ x: mx / 50, y: my / 50 });
+    }
+
+    _handleTouchEnd() {
+        this.input.setJoystick(null);
+        this.ui.resetJoystickKnob();
+
+        if (!this.input.isMobile) {
+            this.ui.showJoystickZone(false);
+        }
+    }
+
+    _handleMobileAction() {
+        if (this.rrUI?.isOpen) return;
+        this.handleAction(ACTIONS.INTERACT);
+    }
+
     /**
      */
     _resize() {
@@ -478,14 +566,6 @@ this.player = new Player(SPAWN_POSITION.x, SPAWN_POSITION.y);
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
     }
-
-    get _resizeHandler() {
-        if (!this.__resizeHandler) {
-            this.__resizeHandler = () => this._resize();
-        }
-        return this.__resizeHandler;
-    }
-
 
     /**
      */

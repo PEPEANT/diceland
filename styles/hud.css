@@ -240,7 +240,7 @@ body.mobile-controls-hidden .mobile-action {
     left: calc(16px + env(safe-area-inset-left));
     right: auto;
     pointer-events: auto;
-    z-index: 99998;
+    z-index: 150;
 }
 
 .ranking-box {
@@ -261,7 +261,7 @@ body.mobile-controls-hidden .mobile-action {
     position: fixed;
     top: calc(96px + env(safe-area-inset-top));
     left: calc(16px + env(safe-area-inset-left));
-    z-index: 99999;
+    z-index: 150;
 }
 
 .ranking-title {
@@ -291,7 +291,7 @@ body.mobile-controls-hidden .mobile-action {
 
 #rank-close {
     position: absolute;
-    z-index: 100000;
+    z-index: 160;
     min-width: 44px;
     min-height: 44px;
     pointer-events: auto;
